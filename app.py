@@ -208,6 +208,67 @@ def api_trend():
         db.close()
 
 
+@app.route('/api/overview')
+@login_required
+def api_overview():
+    db = get_db()
+    try:
+        with db.cursor() as cur:
+            # 今日 / 昨日 访问量
+            cur.execute("""
+                SELECT
+                    SUM(CASE WHEN access_date = CURDATE()                        THEN `count` ELSE 0 END) AS today,
+                    SUM(CASE WHEN access_date = DATE_SUB(CURDATE(), INTERVAL 1 DAY) THEN `count` ELSE 0 END) AS yesterday
+                FROM access_stats
+                WHERE access_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+            """)
+            day_cmp = cur.fetchone()
+
+            # 7 天每日访问量（折线）
+            cur.execute("""
+                SELECT access_date, SUM(`count`) AS total
+                FROM access_stats
+                WHERE access_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+                GROUP BY access_date ORDER BY access_date
+            """)
+            trend7 = [serialize_row(r) for r in cur.fetchall()]
+
+            # 今日 Top 10 域名（饼图）
+            cur.execute("""
+                SELECT domain, SUM(`count`) AS total
+                FROM access_stats
+                WHERE access_date = CURDATE()
+                GROUP BY domain ORDER BY total DESC LIMIT 10
+            """)
+            today_domains = [serialize_row(r) for r in cur.fetchall()]
+
+            # 7 天 IP 归属分布
+            cur.execute("""
+                SELECT
+                    SUM(CASE WHEN l.is_zhejiang = 1  THEN a.`count` ELSE 0 END) AS zhejiang,
+                    SUM(CASE WHEN l.is_zhejiang = 0  THEN a.`count` ELSE 0 END) AS outside,
+                    SUM(CASE WHEN l.is_zhejiang IS NULL THEN a.`count` ELSE 0 END) AS unknown
+                FROM access_stats a
+                LEFT JOIN ip_locations l ON a.client_ip = l.ip
+                WHERE a.access_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+            """)
+            ip_dist = cur.fetchone()
+
+        return jsonify({
+            'today':        int(day_cmp['today']     or 0),
+            'yesterday':    int(day_cmp['yesterday'] or 0),
+            'trend7':       trend7,
+            'today_domains': today_domains,
+            'ip_dist': {
+                'zhejiang': int(ip_dist['zhejiang'] or 0),
+                'outside':  int(ip_dist['outside']  or 0),
+                'unknown':  int(ip_dist['unknown']  or 0),
+            }
+        })
+    finally:
+        db.close()
+
+
 @app.route('/api/domains')
 @login_required
 def api_domains():

@@ -74,9 +74,23 @@
     .page-btn:hover,.page-btn.active { border-color:var(--accent); color:var(--accent); }
     .page-info { color:var(--muted); font-size:.82rem; text-align:center; margin-top:8px; }
 
-    /* Chart */
+    /* Overview charts */
+    .overview-charts { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:24px; }
+    @media(max-width:768px){ .overview-charts { grid-template-columns:1fr; } }
+    .overview-charts-bottom { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    @media(max-width:768px){ .overview-charts-bottom { grid-template-columns:1fr; } }
     .chart-wrap { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; }
-    .chart-title { font-size:.9rem; color:var(--muted); margin-bottom:16px; }
+    .chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .chart-header .chart-title { font-size:.85rem; font-weight:600; color:var(--text); margin:0; }
+    .chart-header .chart-sub   { font-size:.75rem; color:var(--muted); }
+    .today-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:16px; margin-bottom:24px; }
+    .today-card  { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .today-card .label { font-size:.78rem; color:var(--muted); margin-bottom:6px; }
+    .today-card .value { font-size:1.9rem; font-weight:700; color:var(--accent); }
+    .today-card .change { font-size:.75rem; margin-top:4px; }
+    .change-up   { color:#3fb950; }
+    .change-down { color:#f85149; }
+    .change-flat { color:var(--muted); }
 
     /* Sync log */
     .sync-item { display:flex; gap:12px; align-items:flex-start; padding:10px 0; border-bottom:1px solid #21262d; }
@@ -118,6 +132,43 @@
 
   <!-- ── Overview ── -->
   <div class="tab-panel active" id="tab-overview">
+    <!-- 今日数据卡片 -->
+    <div class="today-cards" id="todayCards"><div class="loading" style="grid-column:1/-1">加载中...</div></div>
+
+    <!-- 折线图 + 今日域名饼图 -->
+    <div class="overview-charts">
+      <div class="chart-wrap">
+        <div class="chart-header">
+          <span class="chart-title">最近 7 天访问趋势</span>
+          <span class="chart-sub" id="trend7Sub"></span>
+        </div>
+        <canvas id="overviewTrendChart" height="110"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-header">
+          <span class="chart-title">今日域名分布</span>
+          <span class="chart-sub">Top 10</span>
+        </div>
+        <canvas id="todayDomainChart" height="180"></canvas>
+        <div id="todayDomainEmpty" class="empty" style="display:none;padding:20px">今日暂无数据</div>
+      </div>
+    </div>
+
+    <!-- IP 归属分布 -->
+    <div class="overview-charts-bottom">
+      <div class="chart-wrap">
+        <div class="chart-header">
+          <span class="chart-title">7 天 IP 来源分布</span>
+          <span class="chart-sub">按访问次数</span>
+        </div>
+        <canvas id="ipDistChart" height="160"></canvas>
+      </div>
+      <div class="chart-wrap" style="display:flex;flex-direction:column;justify-content:center;gap:12px;" id="ipDistLegend">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 全量域名汇总表 -->
     <div class="stat-cards" id="statCards"><div class="loading">加载中...</div></div>
     <div class="table-wrap">
       <table>
@@ -222,6 +273,146 @@ function viewDomain(domain) {
   document.getElementById('detailTitle').textContent = '访问明细 — ' + domain;
   switchTab('detail');
   loadDetail(1);
+}
+
+// ── Overview charts ───────────────────────────────────────────────────────────
+let overviewTrendInst = null, todayDomainInst = null, ipDistInst = null;
+
+async function loadOverview() {
+  const res  = await fetch('/api/overview');
+  const data = await res.json();
+
+  // ── 今日卡片
+  const today = data.today, yesterday = data.yesterday;
+  const diff  = today - yesterday;
+  const pct   = yesterday > 0 ? Math.round(diff / yesterday * 100) : null;
+  let changeHtml;
+  if (pct === null)       changeHtml = '<span class="change-flat">昨日无数据</span>';
+  else if (diff > 0)      changeHtml = `<span class="change-up">▲ ${pct}% vs 昨日</span>`;
+  else if (diff < 0)      changeHtml = `<span class="change-down">▼ ${Math.abs(pct)}% vs 昨日</span>`;
+  else                    changeHtml = '<span class="change-flat">与昨日持平</span>';
+
+  const todayDomainCount = data.today_domains.length;
+  const todayTopDomain   = data.today_domains[0];
+
+  document.getElementById('todayCards').innerHTML = `
+    <div class="today-card">
+      <div class="label">今日访问量</div>
+      <div class="value">${fmt(today)}</div>
+      <div class="change">${changeHtml}</div>
+    </div>
+    <div class="today-card">
+      <div class="label">昨日访问量</div>
+      <div class="value" style="color:var(--muted)">${fmt(yesterday)}</div>
+      <div class="change" style="color:var(--muted)">对比基准</div>
+    </div>
+    <div class="today-card">
+      <div class="label">今日活跃域名</div>
+      <div class="value" style="color:#3fb950">${todayDomainCount}</div>
+      <div class="change" style="color:var(--muted)">个服务有流量</div>
+    </div>
+    <div class="today-card">
+      <div class="label">今日最活跃</div>
+      <div class="value" style="font-size:1rem;word-break:break-all;color:#d29922">${todayTopDomain ? esc(todayTopDomain.domain) : '-'}</div>
+      <div class="change" style="color:var(--muted)">${todayTopDomain ? fmt(todayTopDomain.total) + ' 次' : '暂无数据'}</div>
+    </div>`;
+
+  // ── 7 天趋势折线
+  const trend = data.trend7;
+  document.getElementById('trend7Sub').textContent =
+    trend.length ? `${trend[0].access_date} ~ ${trend[trend.length-1].access_date}` : '';
+  if (overviewTrendInst) overviewTrendInst.destroy();
+  overviewTrendInst = new Chart(document.getElementById('overviewTrendChart'), {
+    type: 'line',
+    data: {
+      labels:   trend.map(r => r.access_date),
+      datasets: [{
+        label: '访问次数',
+        data:  trend.map(r => r.total),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,.12)',
+        fill: true, tension: .35,
+        pointBackgroundColor: '#58a6ff', pointRadius: 5, pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ' ' + Number(ctx.parsed.y).toLocaleString('zh-CN') + ' 次' }
+        }
+      },
+      scales: {
+        x: { ticks:{ color:'#8b949e' }, grid:{ color:'#21262d' } },
+        y: { ticks:{ color:'#8b949e' }, grid:{ color:'#21262d' }, beginAtZero: true }
+      }
+    }
+  });
+
+  // ── 今日域名饼图
+  const domains = data.today_domains;
+  const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#79c0ff','#56d364','#ffa657','#ff7b72','#a5d6ff'];
+  if (todayDomainInst) todayDomainInst.destroy();
+  if (domains.length === 0) {
+    document.getElementById('todayDomainChart').style.display = 'none';
+    document.getElementById('todayDomainEmpty').style.display = 'block';
+  } else {
+    document.getElementById('todayDomainChart').style.display = '';
+    document.getElementById('todayDomainEmpty').style.display = 'none';
+    todayDomainInst = new Chart(document.getElementById('todayDomainChart'), {
+      type: 'doughnut',
+      data: {
+        labels:   domains.map(d => d.domain),
+        datasets: [{ data: domains.map(d => d.total), backgroundColor: COLORS, borderWidth: 0 }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position:'bottom', labels:{ color:'#8b949e', font:{ size:11 }, boxWidth:12, padding:8 } },
+          tooltip: {
+            callbacks: { label: ctx => ` ${ctx.label}: ${Number(ctx.parsed).toLocaleString('zh-CN')} 次` }
+          }
+        }
+      }
+    });
+  }
+
+  // ── IP 归属分布
+  const ip = data.ip_dist;
+  const ipTotal = ip.zhejiang + ip.outside + ip.unknown;
+  const pctOf = n => ipTotal > 0 ? (n / ipTotal * 100).toFixed(1) : '0.0';
+
+  if (ipDistInst) ipDistInst.destroy();
+  ipDistInst = new Chart(document.getElementById('ipDistChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['浙江本地','外省/海外','待查询'],
+      datasets: [{ data: [ip.zhejiang, ip.outside, ip.unknown],
+        backgroundColor: ['#3fb950','#f85149','#8b949e'], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.label}: ${Number(ctx.parsed).toLocaleString('zh-CN')} 次 (${pctOf(ctx.parsed)}%)` }
+        }
+      }
+    }
+  });
+
+  document.getElementById('ipDistLegend').innerHTML = [
+    { label:'浙江本地', color:'#3fb950', val: ip.zhejiang },
+    { label:'外省/海外', color:'#f85149', val: ip.outside  },
+    { label:'待查询',   color:'#8b949e', val: ip.unknown   },
+  ].map(item => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #21262d">
+      <div style="width:12px;height:12px;border-radius:3px;background:${item.color};flex-shrink:0"></div>
+      <div style="flex:1;font-size:.85rem">${item.label}</div>
+      <div style="font-size:.85rem;font-weight:600;color:${item.color}">${fmt(item.val)}</div>
+      <div style="font-size:.75rem;color:var(--muted);min-width:40px;text-align:right">${pctOf(item.val)}%</div>
+    </div>`).join('');
 }
 
 // ── Overview ─────────────────────────────────────────────────────────────────
@@ -408,7 +599,7 @@ function esc(s) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
-  await Promise.all([loadSummary(), loadDomains(), loadSyncStatus()]);
+  await Promise.all([loadOverview(), loadSummary(), loadDomains(), loadSyncStatus()]);
 })();
 </script>
 </body>
