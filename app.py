@@ -6,10 +6,14 @@ from functools import wraps
 from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'npm-stats-key-2026-change-me')
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("SECRET_KEY environment variable is required")
 
 ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
-ADMIN_PASS = os.environ.get('ADMIN_PASS', 'admin123')
+ADMIN_PASS = os.environ.get('ADMIN_PASS')
+if not ADMIN_PASS:
+    raise RuntimeError("ADMIN_PASS environment variable is required")
 
 MYSQL_CFG = dict(
     host=os.environ.get('MYSQL_HOST', '127.0.0.1'),

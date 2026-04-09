@@ -111,17 +111,17 @@ docker compose up -d --build
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `MYSQL_HOST` | MySQL 主机地址 | `192.168.31.66` |
+| `MYSQL_HOST` | MySQL 主机地址 | `127.0.0.1` |
 | `MYSQL_PORT` | MySQL 端口 | `3306` |
 | `MYSQL_USER` | MySQL 用户名 | `root` |
-| `MYSQL_PASSWORD` | MySQL 密码 | - |
+| `MYSQL_PASSWORD` | MySQL 密码 | **必填** |
 | `MYSQL_DATABASE` | 数据库名 | `npm_stats` |
-| `NPM_HOST` | NPM 服务器 IP | - |
+| `NPM_HOST` | NPM 服务器 IP | **必填** |
 | `NPM_USER` | NPM 服务器 SSH 用户名 | `ubuntu` |
-| `NPM_PASSWORD` | NPM 服务器 SSH 密码 | - |
+| `NPM_PASSWORD` | NPM 服务器 SSH 密码 | **必填** |
 | `ADMIN_USER` | Web 登录用户名 | `admin` |
-| `ADMIN_PASS` | Web 登录密码 | `admin123` |
-| `SECRET_KEY` | Flask Session 密钥 | 随机字符串 |
+| `ADMIN_PASS` | Web 登录密码 | **必填** |
+| `SECRET_KEY` | Flask Session 密钥 | **必填** |
 
 ## 日志格式兼容性
 
